@@ -75,8 +75,10 @@ export class SkyRig {
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.02;
     scene.add(this.sun, this.sun.target);
-    this.hemi = new THREE.HemisphereLight(0xbcd8f0, 0x3a3f45, 0.7);
+    this.hemi = new THREE.HemisphereLight(0xbcd8f0, 0x3a3f45, 0.9);
     scene.add(this.hemi);
+    this.amb = new THREE.AmbientLight(0xffffff, 0.22);
+    scene.add(this.amb);
 
     // clouds
     this.cloudGroup = new THREE.Group();
@@ -159,7 +161,8 @@ export class SkyRig {
     this.sun.color.copy(sunCol);
     this.sunDirWorld = this.nightFactor > 0.85
       ? new THREE.Vector3(-0.4, 0.8, -0.3).normalize() : sunDir.clone();
-    this.hemi.intensity = lerp(0.06, 0.75, dayness) * lerp(1, 0.7, grey);
+    this.hemi.intensity = lerp(0.10, 0.95, dayness) * lerp(1, 0.7, grey);
+    this.amb.intensity = lerp(0.05, 0.22, dayness);
     this.hemi.color.copy(hor);
     this.hemi.groundColor.copy(gnd);
 

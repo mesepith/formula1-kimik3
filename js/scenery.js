@@ -55,6 +55,15 @@ function groundTexture(kind, baseColor) {
   });
 }
 
+// lift a hex color toward a brighter, more visible ground shade
+function brightenGround(baseColor) {
+  const c = new THREE.Color(baseColor);
+  const hsl = {};
+  c.getHSL(hsl);
+  c.setHSL(hsl.h, Math.min(hsl.s, 0.55), clamp(hsl.l * 1.6 + 0.08, 0.28, 0.6));
+  return c.getHex();
+}
+
 function palmFrondTexture() {
   return makeCanvasTexture(128, 128, (ctx, w, h) => {
     ctx.clearRect(0, 0, w, h);
@@ -107,7 +116,7 @@ export function buildEnvironment(scene, track, city, opts = {}) {
   const sizeX = maxX - minX + 1400, sizeZ = maxZ - minZ + 1400;
 
   // ---------- ground / terrain ----------
-  const gtex = groundTexture(env.groundKind, env.ground);
+  const gtex = groundTexture(env.groundKind, brightenGround(env.ground));
   gtex.repeat.set(sizeX / 90, sizeZ / 90);
   const gmat = new THREE.MeshStandardMaterial({ map: gtex, roughness: 0.96, metalness: 0 });
   if (env.monument === 'mountains') {

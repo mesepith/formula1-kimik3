@@ -294,6 +294,22 @@ export class Track {
     }
   }
 
+  // horizontal wrap quad between last sample and first (closes the loop)
+  _wrapWall(lat, h0, h1, mat) {
+    const N = this.N, s = this.samples;
+    const i = N - 1, j = 0;
+    const ax = s.px[i] + s.rx[i] * lat, az = s.pz[i] + s.rz[i] * lat, ay = s.py[i];
+    const bx = s.px[j] + s.rx[j] * lat, bz = s.pz[j] + s.rz[j] * lat, by = s.py[j];
+    const pos = new Float32Array([
+      ax, ay + h0, az, bx, by + h0, bz, ax, ay + h1, az, bx, by + h1, bz,
+    ]);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setIndex([0, 1, 2, 1, 3, 2]);
+    g.computeVertexNormals();
+    return new THREE.Mesh(g, mat);
+  }
+
   _buildWallsAndFences() {
     const N = this.N, s = this.samples, hw = this.halfWidth;
     // concrete apron
@@ -302,6 +318,7 @@ export class Track {
     for (const side of [-1, 1]) {
       const g = ribbon(s, 0, N - 1, side * (hw + 1.15), side * (hw + WALL_DIST), -0.01, 12);
       this.group.add(new THREE.Mesh(g, am));
+      this.group.add(this._wrapRibbon(side * (hw + 1.15), side * (hw + WALL_DIST), -0.01, 12, am));
     }
     // walls
     const wm = new THREE.MeshStandardMaterial({ map: conc, roughness: 0.9, color: 0xd8dde2 });
@@ -310,6 +327,7 @@ export class Track {
       const m = new THREE.Mesh(g, wm);
       m.castShadow = false; m.receiveShadow = true;
       this.group.add(m);
+      this.group.add(this._wrapWall(side * (hw + WALL_DIST), 0, 1.0, wm));
     }
     // debris fence (transparent grid) above walls
     const ft = fenceTexture();
@@ -320,6 +338,7 @@ export class Track {
     for (const side of [-1, 1]) {
       const g = wallRibbon(s, 0, N - 1, side * (hw + WALL_DIST), 1.0, 3.1, 8);
       this.group.add(new THREE.Mesh(g, fm));
+      this.group.add(this._wrapWall(side * (hw + WALL_DIST), 1.0, 3.1, fm));
     }
   }
 
@@ -423,14 +442,17 @@ export class Track {
     const wg = wallRibbon(ext, 0, ext.px.length - 1, hw + 3.9, 0, 1.0, 30);
     this.group.add(new THREE.Mesh(wg, pm));
 
-    // pit building
+    // pit building — aligned to the average tangent so it never swings onto the road
     const bldLat = laneLat + 8;
-    const bldG = new THREE.BoxGeometry(4, 7, ext.px.length * this.length / N * 0.92);
+    const bldG = new THREE.BoxGeometry(4, 7, ext.px.length * this.length / N * 0.88);
     const bldM = new THREE.MeshStandardMaterial({ color: 0x28303c, roughness: 0.6, metalness: 0.3 });
     const mid = Math.floor(ext.px.length / 2);
     const bld = new THREE.Mesh(bldG, bldM);
     bld.position.set(ext.px[mid] + ext.rx[mid] * bldLat, ext.py[mid] + 3.5, ext.pz[mid] + ext.rz[mid] * bldLat);
-    bld.rotation.y = Math.atan2(ext.rx[mid], ext.rz[mid]) + Math.PI / 2;
+    // average tangent across the pit straight for a stable orientation
+    let atx = 0, atz = 0;
+    for (let k = 0; k < ext.px.length; k++) { atx += ext.tx[k]; atz += ext.tz[k]; }
+    bld.rotation.y = Math.atan2(atx, atz) + Math.PI / 2;
     bld.castShadow = true;
     this.group.add(bld);
 

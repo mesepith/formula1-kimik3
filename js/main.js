@@ -142,6 +142,7 @@ class Game {
     $('load-fill').style.width = '5%';
     const tick = () => new Promise(r => setTimeout(r, 16));
 
+    this._loading = true; // freeze the frame loop's access to race objects
     // dispose previous
     if (this.race) { this.race.dispose(); this.race = null; }
     if (this.track) { this.track.dispose(); this.track = null; }
@@ -182,6 +183,7 @@ class Game {
     $('load-sub').textContent = 'Ready.'; await tick();
     $('loading').classList.add('hidden');
 
+    this._loading = false;
     // intro cinematic
     this.state = 'intro';
     this.hud.show();
@@ -248,6 +250,7 @@ class Game {
   }
 
   _teardownRace() {
+    if (this._resultsTimer) { clearTimeout(this._resultsTimer); this._resultsTimer = null; }
     this.hud.hide();
     document.body.classList.remove('cine-on');
     if (this.race) { this.race.dispose(); this.race = null; }
@@ -290,6 +293,7 @@ class Game {
       switch (ev.type) {
         case 'light': this.hud.setLight(ev.n); this.audio.lightBeep(); break;
         case 'lightsOut':
+          this.state = 'racing';
           this.hud.lightsOut(); this.audio.lightsOut();
           this.hud.commentary('🎙 LIGHTS OUT AND AWAY WE GO!'); break;
         case 'falseStart': this.hud.raceControl('⚠ FALSE START — +10.0s PENALTY', 5000); break;
@@ -332,7 +336,7 @@ class Game {
     document.body.classList.add('cine-on');
     this.camRig.mode = 'tv';   // broadcast cam for the cool-down lap
     if (this._lastSel.isFinale) this._fireworksUntil = this.clock + 10;
-    setTimeout(() => {
+    this._resultsTimer = setTimeout(() => {
       if (!this.race) return;
       document.body.classList.remove('cine-on');
       this.hud.hide();
@@ -430,7 +434,7 @@ class Game {
     if (dt <= 0) return;
     this.clock += dt;
 
-    if (this.state === 'menu' || this.state === 'loading') return;
+    if (this._loading || this.state === 'menu' || this.state === 'loading') return;
 
     this.input.update(dt);
 

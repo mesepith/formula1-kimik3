@@ -79,22 +79,22 @@ export class CameraRig {
         const local = new THREE.Vector3(anchor.x, anchor.y + bob, anchor.z);
         local.applyAxisAngle(new THREE.Vector3(0, 1, 0), st.yaw);
         cam.position.set(st.pos.x + local.x + shX * 0.3, st.pos.y + local.y + shY * 0.3, st.pos.z + local.z);
-        const lookAhead = this.mode === 'helmet' ? 30 : 20;
+        const lookAhead = this.mode === 'helmet' ? 30 : 22;
         const steerLook = this.mode === 'helmet' ? st.steerVisual * 6 : 0;
         const lx = st.pos.x + Math.sin(st.yaw + steerLook * 0.1) * lookAhead;
         const lz = st.pos.z + Math.cos(st.yaw + steerLook * 0.1) * lookAhead;
         cam.position.y += Math.sin(time * 33) * 0.004 * sp01;
-        cam.lookAt(lx, st.pos.y + 0.4, lz);
+        cam.lookAt(lx, st.pos.y + 0.35, lz);
         cam.rotation.z += st.rollVisual * (this.mode === 'helmet' ? 0.9 : 0.35);
         cam.fov = damp(cam.fov, this.mode === 'cockpit' ? 74 : 82, 6, dt);
         cam.updateProjectionMatrix();
         break;
       }
       case 'nose': {
-        const local = new THREE.Vector3(0, 0.42, 1.4);
+        const local = new THREE.Vector3(0, 0.62, 2.65);
         local.applyAxisAngle(new THREE.Vector3(0, 1, 0), st.yaw);
         cam.position.set(st.pos.x + local.x, st.pos.y + local.y, st.pos.z + local.z);
-        cam.lookAt(st.pos.x + fwdX * 26, st.pos.y + 0.3, st.pos.z + fwdZ * 26);
+        cam.lookAt(st.pos.x + fwdX * 26, st.pos.y + 0.1, st.pos.z + fwdZ * 26);
         cam.rotation.z += st.rollVisual * 0.5;
         cam.fov = damp(cam.fov, 92 + sp01 * 10, 6, dt);
         cam.updateProjectionMatrix();
