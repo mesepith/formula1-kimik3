@@ -237,23 +237,37 @@ export function buildEnvironment(scene, track, city, opts = {}) {
   const instances = [];
   const waterDir = env.water ? new THREE.Vector2(env.water.dir[0], env.water.dir[1]).normalize() : null;
 
+  // track clearance helper: buildings must never sit on the road/apron
+  const clearance = (x, z) => {
+    let dMin = 1e9;
+    for (let j = 0; j < N; j += 6) {
+      const dx = x - s.px[j], dz = z - s.pz[j];
+      const d = dx * dx + dz * dz;
+      if (d < dMin) dMin = d;
+    }
+    return Math.sqrt(dMin);
+  };
+  const minClear = hw + 26; // keep city blocks well outside the barriers
+
   for (let i = 0; i < N; i += 3) {
     if (rng() > env.buildings.density) continue;
     for (const side of [-1, 1]) {
       if (rng() < 0.35) continue;
-      const lat = side * (hw + 12 + rng() * 55);
+      const lat = side * (hw + 30 + rng() * 60);
       const bx = s.px[i] + s.rx[i] * lat, bz = s.pz[i] + s.rz[i] * lat;
       if (waterDir) {
         const d = new THREE.Vector2(bx - cx, bz - cz).normalize();
         if (d.dot(waterDir) > 0.45) continue; // keep waterfront open
       }
+      const w = 10 + rng() * 22, d = 10 + rng() * 22;
+      const footprint = Math.hypot(w, d) / 2;
+      if (clearance(bx, bz) < minClear + footprint) continue; // would touch the circuit
       const distC = Math.hypot(bx - cx, bz - cz);
       const central = 1 - clamp(distC / (Math.max(sizeX, sizeZ) * 0.5), 0, 1);
       let hMax = env.buildings.maxH * (0.35 + central * 0.9);
       let hgt = 8 + rng() * hMax;
       if (style === 'colonial' || style === 'pink' || style === 'goa' || style === 'kochi') hgt = 6 + rng() * env.buildings.maxH;
       if (style === 'ladakh') hgt = 4 + rng() * 8;
-      const w = 10 + rng() * 22, d = 10 + rng() * 22;
       const color = palettes[Math.floor(rng() * palettes.length)];
       instances.push({ x: bx, z: bz, y: (env.monument === 'mountains') ? null : 0, w, d, h: hgt, yaw: rng() * Math.PI, color });
     }
@@ -265,7 +279,7 @@ export function buildEnvironment(scene, track, city, opts = {}) {
   }
   for (const colorHex of Object.keys(byColor)) {
     const list = byColor[colorHex];
-    const ft = facadeTexture(style, colorHex);
+    const ft = facadeTexture(style, Number(colorHex));
     const mat = new THREE.MeshStandardMaterial({
       map: ft, roughness: style === 'glass' ? 0.25 : 0.85,
       metalness: style === 'glass' ? 0.55 : 0.05,
@@ -323,6 +337,7 @@ export function buildEnvironment(scene, track, city, opts = {}) {
         if (d.dot(waterDir) > 0.75) continue;
       }
       const scale = 0.8 + rng() * (env.trees === 'coconut' ? 0.9 : 0.5);
+      if (clearance(x, z) < hw + 5.0 + scale * 3.6) continue; // keep fronds off the track
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * 6.3);
       pv.set(x, s.py[i] - 0.05, z);
       sc.set(scale, scale * (env.trees === 'coconut' ? 1.35 : 1), scale);
@@ -657,7 +672,7 @@ function buildTraffic(group, track, city, rng, animated) {
   for (let v = 0; v < 12; v++) {
     const mesh = makers[v % makers.length]();
     const side = v % 2 ? 1 : -1;
-    const lat = side * (hw + 8.5 + (v % 3));
+    const lat = side * (hw + 9.5 + (v % 3));
     mesh.userData = { t: rng(), speed: (6 + rng() * 6) * (side > 0 ? 1 : -1) / 1, lat };
     group.add(mesh);
     vehicles.push(mesh);
