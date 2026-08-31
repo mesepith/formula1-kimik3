@@ -126,23 +126,38 @@ export function stepCar(st, input, dt, track, weatherGrip, rainAmount, P = CAR_P
 
   const acc = (engineForce - dragF * Math.sign(v) - rrF - brakeF) / P.mass;
   st.speed = v + acc * dt;
-  if (st.speed < 0) st.speed = Math.min(0, st.speed); // allow tiny reverse only via reset
-  if (st.speed < 0.05 && input.throttle < 0.05) st.speed = 0;
+  // reverse gear: hold the brake at (near) standstill to back out of the scenery (~23 km/h max).
+  // Any throttle input cancels reverse and drives forward again.
+  if (st.reversing === undefined) st.reversing = false;
+  if (st.reversing && (input.throttle > 0.08 || input.brake < 0.1)) st.reversing = false;
+  if (!st.reversing && input.brake > 0.3 && Math.abs(st.speed) < 0.9) st.reversing = true;
+  if (st.reversing) {
+    st.speed = Math.max(-6.5, st.speed - 5.2 * input.brake * dt);
+  } else if (Math.abs(st.speed) < 0.05 && input.throttle < 0.05) {
+    st.speed = 0;
+  }
 
   // ---------- gearbox ----------
   const tops = P.gearsTop;
-  const gTop = tops[st.gear - 1];
-  const gPrev = st.gear > 1 ? tops[st.gear - 2] : 0;
-  st.rpm = P.idleRpm + clamp((st.speed - gPrev) / (gTop - gPrev), 0, 1.04) * (P.maxRpm - P.idleRpm);
-  if (st.shiftTimer <= 0) {
-    if (st.rpm >= P.shiftRpm && st.gear < 8) { st.gear++; st.shiftTimer = 0.045; st.justShifted = 1; }
-    else if (st.gear > 1 && st.speed < tops[st.gear - 2] * 0.62) { st.gear--; st.shiftTimer = 0.045; st.justShifted = -1; }
-    else st.justShifted = 0;
-  } else st.justShifted = 0;
+  if (st.reversing || st.speed < 0) {
+    // force 1st gear, rev the motor while backing up
+    st.gear = 1;
+    st.justShifted = 0;
+    st.rpm = P.idleRpm + Math.abs(st.speed) / 6.5 * 4200;
+  } else {
+    const gTop = tops[st.gear - 1];
+    const gPrev = st.gear > 1 ? tops[st.gear - 2] : 0;
+    st.rpm = P.idleRpm + clamp((st.speed - gPrev) / (gTop - gPrev), 0, 1.04) * (P.maxRpm - P.idleRpm);
+    if (st.shiftTimer <= 0) {
+      if (st.rpm >= P.shiftRpm && st.gear < 8) { st.gear++; st.shiftTimer = 0.045; st.justShifted = 1; }
+      else if (st.gear > 1 && st.speed < tops[st.gear - 2] * 0.62) { st.gear--; st.shiftTimer = 0.045; st.justShifted = -1; }
+      else st.justShifted = 0;
+    } else st.justShifted = 0;
+  }
 
   // ---------- lateral ----------
   let yawRate = 0;
-  if (st.speed > 0.5) {
+  if (Math.abs(st.speed) > 0.5) {
     const desiredYaw = st.speed / P.wheelbase * Math.tan(st.steerVisual);
     const latAccNeed = desiredYaw * st.speed;
     if (Math.abs(latAccNeed) <= maxLatAcc) {
@@ -184,11 +199,23 @@ export function stepCar(st, input, dt, track, weatherGrip, rainAmount, P = CAR_P
     st.damage = Math.min(1, st.damage + Math.abs(velAlongWall) * 0.02 + 0.01);
     st.hitWall = true;
   } else st.hitWall = false;
+  // decay a "recently hit" flag so the stuck-hint works after the scrape ends
+  if (st.hitWall) st.wallHitT = 0.9;
+  else if (st.wallHitT > 0) st.wallHitT -= dt;
 
-  // ground height (from track elevation)
+  // ground height — snap tightly to the road surface (no floating)
   const s2 = track.samples, i2 = st.trackIdx;
   const j2 = (i2 + 1) % track.N;
-  st.pos.y = lerp(st.pos.y, s2.py[i2], 1 - Math.exp(-14 * dt));
+  // project the car onto the segment i2→j2 (normalized frac) so height is evaluated
+  // at the closest point on the road centerline — works on straights and crests alike
+  const segDx = s2.px[j2] - s2.px[i2], segDz = s2.pz[j2] - s2.pz[i2];
+  const segLen2 = segDx * segDx + segDz * segDz;
+  const frac = segLen2 > 1e-6
+    ? clamp(((st.pos.x - s2.px[i2]) * segDx + (st.pos.z - s2.pz[i2]) * segDz) / segLen2, 0, 1)
+    : 0;
+  const roadY = s2.py[i2] + (s2.py[j2] - s2.py[i2]) * frac;
+  // hard snap: the car must sit ON the surface, not hover toward it
+  st.pos.y = roadY;
 
   // ---------- tires ----------
   const latAcc = Math.abs(yawRate) * st.speed;
@@ -199,7 +226,10 @@ export function stepCar(st, input, dt, track, weatherGrip, rainAmount, P = CAR_P
 
   // ---------- visuals ----------
   st.wheelSpin += (st.speed / 0.335) * dt;
-  st.pitchVisual = lerp(st.pitchVisual, clamp(-acc * 0.006, -0.05, 0.04), 1 - Math.exp(-8 * dt));
+  // slope: align to the road gradient so the car doesn't float nose-up on climbs
+  const slope = (s2.py[j2] - s2.py[i2]) / Math.max(0.1, track.length / track.N);
+  const fwdSlope = slope * (fwdX * s2.tx[i2] + fwdZ * s2.tz[i2]);
+  st.pitchVisual = lerp(st.pitchVisual, clamp(-acc * 0.006, -0.06, 0.04) + clamp(fwdSlope * 0.5, -0.1, 0.1), 1 - Math.exp(-8 * dt));
   st.rollVisual = lerp(st.rollVisual, clamp(latAcc * 0.0022 * Math.sign(st.steerVisual || 0.001), -0.06, 0.06), 1 - Math.exp(-8 * dt));
 
   return st;

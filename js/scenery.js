@@ -119,6 +119,7 @@ export function buildEnvironment(scene, track, city, opts = {}) {
   const gtex = groundTexture(env.groundKind, brightenGround(env.ground));
   gtex.repeat.set(sizeX / 90, sizeZ / 90);
   const gmat = new THREE.MeshStandardMaterial({ map: gtex, roughness: 0.96, metalness: 0 });
+  let flatGround = null;
   if (env.monument === 'mountains') {
     // Himalayan terrain heightfield
     const seg = 110;
@@ -177,13 +178,51 @@ export function buildEnvironment(scene, track, city, opts = {}) {
     tunnel.rotation.y = Math.atan2(tTan.x, tTan.z) + Math.PI / 2;
     group.add(tunnel);
   } else {
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(sizeX, sizeZ), gmat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.set(cx, -0.08, cz);
-    ground.receiveShadow = true;
-    group.add(ground);
+    flatGround = new THREE.Mesh(new THREE.PlaneGeometry(sizeX, sizeZ), gmat);
+    flatGround.rotation.x = -Math.PI / 2;
+    flatGround.position.set(cx, -0.08, cz);
+    flatGround.receiveShadow = true;
+    group.add(flatGround);
   }
   const groundY = () => 0; // flat cities
+  const hasElevation = (maxY - minY) > 0.5; // any city with meaningful elevation changes
+
+  // For cities with elevation, add a shaped underlay that fills the gap between the
+  // road and the terrain, so no section ever looks like a floating ribbon.
+  if (env.monument !== 'mountains' && hasElevation) {
+    const segX = Math.max(24, Math.floor(sizeX / 40));
+    const segZ = Math.max(24, Math.floor(sizeZ / 40));
+    const tg = new THREE.PlaneGeometry(sizeX, sizeZ, segX, segZ);
+    tg.rotateX(-Math.PI / 2);
+    const posA = tg.attributes.position;
+    const colors = new Float32Array(posA.count * 3);
+    for (let vi = 0; vi < posA.count; vi++) {
+      const x = posA.getX(vi) + cx, z = posA.getZ(vi) + cz;
+      let dMin = 1e9, yNear = 0;
+      for (let i = 0; i < N; i += 6) {
+        const dx = x - s.px[i], dz = z - s.pz[i];
+        const d = dx * dx + dz * dz;
+        if (d < dMin) { dMin = d; yNear = s.py[i]; }
+      }
+      dMin = Math.sqrt(dMin);
+      // terrain rises to just below the road near the circuit, then falls away
+      let h;
+      if (dMin < 12) h = yNear - 0.35;
+      else if (dMin < 45) h = yNear - 0.35 - (dMin - 12) * 0.05;
+      else h = Math.max(yNear - 2, 0);
+      posA.setY(vi, h);
+      const c = new THREE.Color(env.ground).multiplyScalar(0.75 + 0.25 * clamp(dMin / 45, 0, 1));
+      colors[vi * 3] = c.r; colors[vi * 3 + 1] = c.g; colors[vi * 3 + 2] = c.b;
+    }
+    tg.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    tg.computeVertexNormals();
+    const underlay = new THREE.Mesh(tg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+    underlay.position.set(cx, 0, cz);
+    underlay.receiveShadow = true;
+    group.add(underlay);
+    // hide the flat ground plane — the underlay replaces it
+    if (flatGround) flatGround.visible = false;
+  }
 
   // ---------- water ----------
   if (env.water) {

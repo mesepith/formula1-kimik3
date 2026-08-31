@@ -67,8 +67,8 @@ export class HUD {
   update(race, dt, camLabel) {
     const player = race.player, st = player.state;
     // tach
-    $('speed').textContent = Math.round(st.speed * 3.6);
-    $('gear').textContent = st.gear;
+    $('speed').textContent = Math.round(Math.abs(st.speed) * 3.6);
+    $('gear').textContent = st.reversing ? 'R' : st.gear;
     const rpm01 = clamp((st.rpm - 3800) / (12600 - 3800), 0, 1);
     $('rpm-bar').style.width = (rpm01 * 100).toFixed(1) + '%';
     const ersBar = $('ers-bar');

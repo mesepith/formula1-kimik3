@@ -30,6 +30,7 @@ export class Input {
       gpBrake = p.buttons[6]?.value || 0;
       if (p.buttons[0]?.pressed) this.pressed['Space'] = true;
       if (p.buttons[1]?.pressed) this.pressed['KeyF'] = true;
+      if (p.buttons[2]?.pressed) this.pressed['KeyR'] = true;
       if (p.buttons[3]?.pressed) this.pressed['KeyC'] = true;
       break;
     }

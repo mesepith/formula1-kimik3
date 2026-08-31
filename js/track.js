@@ -218,6 +218,17 @@ export class Track {
     const wrap = this._wrapRibbon(-hw, hw, 0, 10, this.roadMat);
     this.group.add(wrap);
 
+    // side skirts: vertical drops from road edges down to the ground, so elevated
+    // sections (Ladakh, flyovers) don't show floating ribbons
+    const skirtMat = new THREE.MeshStandardMaterial({ map: concreteTexture(), roughness: 0.95, color: 0x6a6f75 });
+    for (const side of [-1, 1]) {
+      const sg = wallRibbon(s, 0, N - 1, side * hw, -1.2, 0.02, 30);
+      const sm2 = new THREE.Mesh(sg, skirtMat);
+      sm2.receiveShadow = true;
+      this.group.add(sm2);
+      this.group.add(this._wrapWall(side * hw, -1.2, 0.02, skirtMat));
+    }
+
     // white edge lines
     const lineMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.7 });
     for (const side of [-1, 1]) {
@@ -444,7 +455,7 @@ export class Track {
 
     // pit building — aligned to the average tangent so it never swings onto the road
     const bldLat = laneLat + 8;
-    const bldG = new THREE.BoxGeometry(4, 7, ext.px.length * this.length / N * 0.88);
+    const bldG = new THREE.BoxGeometry(4, 6.2, ext.px.length * this.length / N * 0.82);
     const bldM = new THREE.MeshStandardMaterial({ color: 0x28303c, roughness: 0.6, metalness: 0.3 });
     const mid = Math.floor(ext.px.length / 2);
     const bld = new THREE.Mesh(bldG, bldM);

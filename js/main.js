@@ -460,14 +460,22 @@ class Game {
       this.hud.raceControl('📷 ' + label, 1200);
     }
     // reset to track
-    if (this.input.consume('KeyR') && this.state === 'racing') {
+    if (this.input.consume('KeyR') && (this.state === 'racing' || this.state === 'finished')) {
       const st = this.race.player.state;
       const near = this.track.nearest(st.pos, st.trackIdx);
       const p = this.track.pointAt(near.t), tn = this.track.tangentAt(near.t);
       st.pos.set(p.x, p.y, p.z);
       st.yaw = Math.atan2(tn.x, tn.z);
-      st.speed = 0; st.latVel = 0;
-      this.hud.raceControl('RESET TO TRACK', 1500);
+      st.speed = 0; st.latVel = 0; st.reversing = false;
+      this.camRig._pos.set(p.x - tn.x * 7, p.y + 3, p.z - tn.z * 7);
+      this.hud.raceControl('⟲ RESET TO TRACK', 1500);
+    }
+    // stuck? show recovery hint: hold S to reverse, R to reset
+    if (this.state === 'racing') {
+      const st = this.race.player.state;
+      const stuck = Math.abs(st.speed) < 2.5 && this.input.throttle > 0.5 && (st.hitWall || st.wallHitT > 0 || st.offTrack);
+      this._stuckTime = stuck ? (this._stuckTime || 0) + dt : 0;
+      if (this._stuckTime > 1.2) { this.hud.raceControl('STUCK? HOLD S/↓ TO REVERSE · PRESS R TO RESET', 2600); this._stuckTime = -3.2; }
     }
 
     // physics (substep for stability)

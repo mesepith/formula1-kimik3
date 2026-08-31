@@ -68,12 +68,12 @@ export class SkyRig {
     this.sun = new THREE.DirectionalLight(0xffffff, 2.4);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
-    this.sun.shadow.camera.near = 10; this.sun.shadow.camera.far = 400;
-    const S = 95;
+    this.sun.shadow.camera.near = 5; this.sun.shadow.camera.far = 300;
+    const S = 46;
     this.sun.shadow.camera.left = -S; this.sun.shadow.camera.right = S;
     this.sun.shadow.camera.top = S; this.sun.shadow.camera.bottom = -S;
-    this.sun.shadow.bias = -0.0004;
-    this.sun.shadow.normalBias = 0.02;
+    this.sun.shadow.bias = -0.0002;
+    this.sun.shadow.normalBias = 0.05;
     scene.add(this.sun, this.sun.target);
     this.hemi = new THREE.HemisphereLight(0xbcd8f0, 0x3a3f45, 0.9);
     scene.add(this.hemi);
