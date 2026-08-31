@@ -18,6 +18,14 @@ export class UI {
     $('btn-resume').addEventListener('click', () => this.h.onResume());
     $('btn-restart').addEventListener('click', () => this.h.onRestart());
     $('btn-quit').addEventListener('click', () => this.h.onQuit());
+    $('btn-controls').addEventListener('click', () => {
+      $('pause-main-box').classList.add('hidden');
+      $('pause-controls').classList.remove('hidden');
+    });
+    $('btn-controls-back').addEventListener('click', () => {
+      $('pause-controls').classList.add('hidden');
+      $('pause-main-box').classList.remove('hidden');
+    });
     $('btn-results-continue').addEventListener('click', () => this.h.onResultsContinue());
     $('btn-results-retry').addEventListener('click', () => this.h.onRestart());
     $('btn-results-menu').addEventListener('click', () => this.h.onQuit());

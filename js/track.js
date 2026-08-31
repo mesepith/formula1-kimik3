@@ -229,12 +229,33 @@ export class Track {
       this.group.add(this._wrapWall(side * hw, -1.2, 0.02, skirtMat));
     }
 
-    // white edge lines
-    const lineMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.7 });
+    // white edge lines — fully emissive so they read identical in sun or shadow,
+    // day or night — both road boundaries always look the same.
+    const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    lineMat.toneMapped = true;
     for (const side of [-1, 1]) {
-      const lg = ribbon(s, 0, N - 1, side * (hw - 0.35), side * (hw - 0.05), 0.015, 10);
-      this.group.add(new THREE.Mesh(lg, lineMat));
-      this.group.add(this._wrapRibbon(side * (hw - 0.35), side * (hw - 0.05), 0.015, 10, lineMat));
+      const lg = ribbon(s, 0, N - 1, side * (hw - 0.5), side * (hw + 0.08), 0.018, 10);
+      const lm = new THREE.Mesh(lg, lineMat);
+      lm.receiveShadow = false; // never darkened by building shadows
+      this.group.add(lm);
+      this.group.add(this._wrapRibbon(side * (hw - 0.5), side * (hw + 0.08), 0.018, 10, lineMat));
+    }
+
+    // verge: ONE uniform pale concrete band from the white line all the way to the
+    // wall, identical on BOTH sides — this replaces the old dark outer apron so the
+    // read of the road boundary never differs left vs right.
+    const vergeTex = concreteTexture();
+    const vergeMat = new THREE.MeshStandardMaterial({
+      map: vergeTex, color: 0xd6dbe2, roughness: 0.85,
+      emissive: 0xffffff, emissiveMap: vergeTex, emissiveIntensity: 0.28,
+    });
+    this.lampMaterials.push({ mat: vergeMat, day: 0.28, night: 0.75 });
+    for (const side of [-1, 1]) {
+      const vg = ribbon(s, 0, N - 1, side * (hw + 0.08), side * (hw + WALL_DIST), -0.005, 12);
+      const vm = new THREE.Mesh(vg, vergeMat);
+      vm.receiveShadow = true;
+      this.group.add(vm);
+      this.group.add(this._wrapRibbon(side * (hw + 0.08), side * (hw + WALL_DIST), -0.005, 12, vergeMat));
     }
 
     // finish line checker strip
@@ -276,33 +297,24 @@ export class Track {
   _buildKerbs() {
     const N = this.N, s = this.samples, hw = this.halfWidth;
     const kt = kerbTexture();
-    const km = new THREE.MeshStandardMaterial({ map: kt, roughness: 0.75 });
+    // fully emissive so the boundary is equally readable in sun or shadow, day or night.
+    // DoubleSide is explicit because the ribbon winding flips for negative lat offsets.
+    const km = new THREE.MeshBasicMaterial({
+      map: kt, toneMapped: true, side: THREE.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+    });
+    // continuous red/white kerb on BOTH sides for the entire lap — not only corners —
+    // so the left boundary is always as obvious as the right one.
     const geoms = [];
-    const inCorner = new Array(N).fill(false);
-    for (let i = 0; i < N; i++) inCorner[i] = Math.abs(s.kappa[i]) > 0.0062;
-    // dilate
-    const dil = new Array(N).fill(false);
-    for (let i = 0; i < N; i++) if (inCorner[i])
-      for (let k = -6; k <= 6; k++) dil[(i + k + N) % N] = true;
-    let i = 0;
-    while (i < N) {
-      if (!dil[i]) { i++; continue; }
-      let j = i;
-      while (j < N && dil[j]) j++;
-      if (j - i > 8) {
-        for (const side of [-1, 1]) {
-          const g = ribbon(s, i, j - 1, side * (hw + 0.02), side * (hw + 1.15), 0.012, 5, 1);
-          geoms.push(g);
-        }
-      }
-      i = j;
+    for (const side of [-1, 1]) {
+      const g = ribbon(s, 0, N - 1, side * (hw + 0.02), side * (hw + 1.15), 0.035, 5, 1);
+      geoms.push(g);
+      this.group.add(this._wrapRibbon(side * (hw + 0.02), side * (hw + 1.15), 0.035, 5, km));
     }
-    if (geoms.length) {
-      const merged = mergeGeometries(geoms);
-      const m = new THREE.Mesh(merged, km);
-      m.receiveShadow = true;
-      this.group.add(m);
-    }
+    const merged = mergeGeometries(geoms);
+    const m = new THREE.Mesh(merged, km);
+    m.receiveShadow = false;
+    this.group.add(m);
   }
 
   // horizontal wrap quad between last sample and first (closes the loop)
@@ -323,15 +335,9 @@ export class Track {
 
   _buildWallsAndFences() {
     const N = this.N, s = this.samples, hw = this.halfWidth;
-    // concrete apron
+    // (run-off surface between the white lines and the walls is the pale concrete
+    //  verge built in _buildRoad — one identical band on both sides)
     const conc = concreteTexture();
-    const am = new THREE.MeshStandardMaterial({ map: conc, roughness: 0.95 });
-    for (const side of [-1, 1]) {
-      const g = ribbon(s, 0, N - 1, side * (hw + 1.15), side * (hw + WALL_DIST), -0.01, 12);
-      this.group.add(new THREE.Mesh(g, am));
-      this.group.add(this._wrapRibbon(side * (hw + 1.15), side * (hw + WALL_DIST), -0.01, 12, am));
-    }
-    // walls
     const wm = new THREE.MeshStandardMaterial({ map: conc, roughness: 0.9, color: 0xd8dde2 });
     for (const side of [-1, 1]) {
       const g = wallRibbon(s, 0, N - 1, side * (hw + WALL_DIST), 0, 1.0, 30);

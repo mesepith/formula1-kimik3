@@ -210,11 +210,27 @@
     </div>
 
     <div id="screen-pause" class="screen overlay">
-      <div class="pause-box">
+      <div class="pause-box" id="pause-main-box">
         <h2>PAUSED</h2>
         <button class="menu-btn small" id="btn-resume">RESUME</button>
         <button class="menu-btn small" id="btn-restart">RESTART RACE</button>
+        <button class="menu-btn small" id="btn-controls">🎮 CONTROLS</button>
         <button class="menu-btn small" id="btn-quit">QUIT TO MENU</button>
+      </div>
+      <div class="pause-box pause-controls hidden" id="pause-controls">
+        <h2>CONTROLS</h2>
+        <table class="keys">
+          <tr><td><kbd>W</kbd>/<kbd>↑</kbd></td><td>Throttle</td></tr>
+          <tr><td><kbd>S</kbd>/<kbd>↓</kbd></td><td>Brake / Reverse (hold at standstill)</td></tr>
+          <tr><td><kbd>A</kbd> <kbd>D</kbd> / <kbd>←</kbd> <kbd>→</kbd></td><td>Steering</td></tr>
+          <tr><td><kbd>Space</kbd></td><td>ERS Boost (energy deploy)</td></tr>
+          <tr><td><kbd>F</kbd></td><td>DRS (in DRS zones)</td></tr>
+          <tr><td><kbd>C</kbd></td><td>Camera (Chase/Cockpit/Helmet/TV/Aerial)</td></tr>
+          <tr><td><kbd>R</kbd></td><td>Reset to track (when stuck/off track)</td></tr>
+          <tr><td><kbd>M</kbd></td><td>Mute</td></tr>
+          <tr><td><kbd>Esc</kbd>/<kbd>P</kbd></td><td>Pause</td></tr>
+        </table>
+        <button class="menu-btn small" id="btn-controls-back">◀ BACK</button>
       </div>
     </div>
 

@@ -76,7 +76,14 @@ class Game {
         $('mute-ind').classList.toggle('hidden', !this.audio.muted);
       }
       if ((e.code === 'Escape' || e.code === 'KeyP') && (this.state === 'racing' || this.state === 'finished')) {
-        this.togglePause();
+        // if the controls sub-panel is open, Esc goes back to the pause menu first
+        const pc = $('pause-controls');
+        if (this.paused && e.code === 'Escape' && pc && !pc.classList.contains('hidden')) {
+          pc.classList.add('hidden');
+          $('pause-main-box').classList.remove('hidden');
+        } else {
+          this.togglePause();
+        }
       }
       if (e.code === 'Enter' && this.state === 'intro') {
         if (this.camRig.skipCinematic()) this.hud.setSkipHint(false);
@@ -224,6 +231,11 @@ class Game {
     if (this.state !== 'racing' && this.state !== 'finished') return;
     this.paused = force !== undefined ? force : !this.paused;
     $('screen-pause').classList.toggle('active', this.paused);
+    // always land on the main pause view, not the controls sub-panel
+    if (this.paused) {
+      $('pause-controls').classList.add('hidden');
+      $('pause-main-box').classList.remove('hidden');
+    }
     if (this.race?.mode === 'timetrial') $('btn-restart').textContent = 'END SESSION';
     else $('btn-restart').textContent = 'RESTART RACE';
   }
