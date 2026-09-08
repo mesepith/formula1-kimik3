@@ -5,6 +5,7 @@ import { mergeGeometries, makeCanvasTexture, drawSignText } from './utils.js';
 // Car faces +Z. Dimensions ~ F1: L 5.6m, W 2.0m, wheelbase 3.7m
 export const CAR_DIM = {
   halfLen: 2.8, halfWid: 1.0, wheelR: 0.335, wheelW: 0.40,
+  rearWheelR: 0.37, rearWheelW: 0.46,   // rears are bigger — must read from behind
   frontAxle: 1.85, rearAxle: -1.85, // z positions
 };
 
@@ -183,44 +184,73 @@ export function buildCar(team, driverNum, accentHex) {
   rainLight.position.set(0, 0.62, -2.78);
   group.add(rainLight);
 
+  // ---------- headlights (lit at night via race loop) ----------
+  const hlMat = new THREE.MeshStandardMaterial({ color: 0xfff6dd, emissive: 0xfff2cc, emissiveIntensity: 0 });
+  const hlGeo = new THREE.BoxGeometry(0.1, 0.06, 0.02);
+  const headlights = [];
+  for (const sd of [-1, 1]) {
+    const hl = new THREE.Mesh(hlGeo, hlMat);
+    hl.position.set(sd * 0.32, 0.3, 2.62);
+    group.add(hl);
+    headlights.push(hl);
+  }
+  const beam = new THREE.SpotLight(0xfff0c8, 0, 60, 1.05, 0.55, 1.4);
+  beam.position.set(0, 0.5, 2.3);
+  const beamTarget = new THREE.Object3D();
+  beamTarget.position.set(0, -0.4, 26);
+  group.add(beam, beamTarget);
+  beam.target = beamTarget;
+
   // ---------- wheels ----------
+  // tire: dark rubber. A bright accent ring on the OUTER face makes the round tire
+  // outline unmistakable from behind and in haze (this is what made the rears invisible).
   const tireTex = tireTexture('#ffd23f');
-  const tireMat = new THREE.MeshStandardMaterial({ map: tireTex, roughness: 0.95, metalness: 0 });
-  const rimMat = new THREE.MeshStandardMaterial({ color: 0x9aa2ac, roughness: 0.25, metalness: 0.9 });
+  const tireMat = new THREE.MeshStandardMaterial({ map: tireTex, roughness: 0.92, metalness: 0 });
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0xb9c1cb, roughness: 0.3, metalness: 0.85, emissive: 0x23272c, emissiveIntensity: 0.5 });
   const brakeMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.4, metalness: 0.6, emissive: 0xff4400, emissiveIntensity: 0 });
+  const ringMat = new THREE.MeshStandardMaterial({ color: 0xffd23f, roughness: 0.5, metalness: 0.2, emissive: 0xffd23f, emissiveIntensity: 0.3 });
 
   const wheels = {};
-  const mkWheel = (x, z, key, steer) => {
+  const mkWheel = (x, z, key, steer, radius, width) => {
+    const Wr = radius ?? R, Ww = width ?? CAR_DIM.wheelW;
     const pivot = new THREE.Group();       // steering pivot
     const spin = new THREE.Group();        // spinning group
-    const tg = new THREE.CylinderGeometry(R, R, CAR_DIM.wheelW, 22);
+    const tg = new THREE.CylinderGeometry(Wr, Wr, Ww, 26);
     tg.rotateZ(Math.PI / 2);
     const tire = new THREE.Mesh(tg, tireMat);
     tire.castShadow = true;
     spin.add(tire);
+    // bright outer-face ring — outlines the tire so it's never lost against dark asphalt
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(Wr * 0.88, 0.02, 8, 32), ringMat);
+    ring.rotation.y = Math.PI / 2;
+    ring.position.x = x > 0 ? Ww / 2 + 0.012 : -(Ww / 2 + 0.012);
+    spin.add(ring);
     // rim rings
-    const rg = new THREE.CylinderGeometry(R * 0.55, R * 0.55, CAR_DIM.wheelW + 0.02, 14);
+    const rg = new THREE.CylinderGeometry(Wr * 0.55, Wr * 0.55, Ww + 0.02, 16);
     rg.rotateZ(Math.PI / 2);
     spin.add(new THREE.Mesh(rg, rimMat));
     // wheel cover (team color)
-    const cg = new THREE.CylinderGeometry(R * 0.3, R * 0.3, CAR_DIM.wheelW + 0.04, 10);
+    const cg = new THREE.CylinderGeometry(Wr * 0.3, Wr * 0.3, Ww + 0.04, 12);
     cg.rotateZ(Math.PI / 2);
     spin.add(new THREE.Mesh(cg, accentMat));
     // brake disc
-    const bg = new THREE.CylinderGeometry(R * 0.42, R * 0.42, 0.05, 12);
+    const bg = new THREE.CylinderGeometry(Wr * 0.42, Wr * 0.42, 0.05, 14);
     bg.rotateZ(Math.PI / 2);
     const bd = new THREE.Mesh(bg, brakeMat);
     bd.position.x = x > 0 ? -0.12 : 0.12;
     spin.add(bd);
     pivot.add(spin);
-    pivot.position.set(x, R + 0.02, z);
+    pivot.position.set(x, Wr + 0.02, z);
     group.add(pivot);
-    wheels[key] = { pivot, spin, steer, radius: R };
+    wheels[key] = { pivot, spin, steer, radius: Wr };
   };
   mkWheel(-0.82, CAR_DIM.frontAxle, 'fl', true);
   mkWheel(0.82, CAR_DIM.frontAxle, 'fr', true);
-  mkWheel(-0.82, CAR_DIM.rearAxle, 'rl', false);
-  mkWheel(0.82, CAR_DIM.rearAxle, 'rr', false);
+  // rear track is wider + tires are bigger — from any rear/high camera the rear tires
+  // must visibly clear the bodywork, otherwise the car looks like it has no rear wheels.
+  // (cosmetic only — physics tracks its own contact model)
+  mkWheel(-1.02, CAR_DIM.rearAxle, 'rl', false, CAR_DIM.rearWheelR, CAR_DIM.rearWheelW);
+  mkWheel(1.02, CAR_DIM.rearAxle, 'rr', false, CAR_DIM.rearWheelR, CAR_DIM.rearWheelW);
 
   // ---------- driver ----------
   const helmetMat = new THREE.MeshStandardMaterial({ color: accentHex ?? team.secondary, roughness: 0.15, metalness: 0.3 });
@@ -253,6 +283,7 @@ export function buildCar(team, driverNum, accentHex) {
 
   return {
     group, wheels, drsPivot, rainMat, brakeMat, swGroup, helmet, helmetMat,
+    headlightMat: hlMat, beam,
     cockpitAnchor: new THREE.Vector3(0, 0.86, 0.1),
     helmetAnchor: new THREE.Vector3(0, 0.92, 0.02),
   };

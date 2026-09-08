@@ -219,14 +219,19 @@ export class Track {
     this.group.add(wrap);
 
     // side skirts: vertical drops from road edges down to the ground, so elevated
-    // sections (Ladakh, flyovers) don't show floating ribbons
+    // sections (Ladakh, flyovers) don't show floating ribbons. Depth scales with the
+    // track's elevation range: flat street circuits get a shallow 1.2m kerb reveal,
+    // the mountain circuit gets a deep retaining wall that reaches the valley floor.
+    let minPY = Infinity, maxPY = -Infinity;
+    for (let i = 0; i < N; i++) { minPY = Math.min(minPY, s.py[i]); maxPY = Math.max(maxPY, s.py[i]); }
+    const skirtDepth = (maxPY - minPY) > 4 ? Math.min((maxPY - minPY) * 0.5 + 3, 46) : 1.2;
     const skirtMat = new THREE.MeshStandardMaterial({ map: concreteTexture(), roughness: 0.95, color: 0x6a6f75 });
     for (const side of [-1, 1]) {
-      const sg = wallRibbon(s, 0, N - 1, side * hw, -1.2, 0.02, 30);
+      const sg = wallRibbon(s, 0, N - 1, side * hw, -skirtDepth, 0.02, 30);
       const sm2 = new THREE.Mesh(sg, skirtMat);
       sm2.receiveShadow = true;
       this.group.add(sm2);
-      this.group.add(this._wrapWall(side * hw, -1.2, 0.02, skirtMat));
+      this.group.add(this._wrapWall(side * hw, -skirtDepth, 0.02, skirtMat));
     }
 
     // white edge lines — fully emissive so they read identical in sun or shadow,
@@ -459,13 +464,21 @@ export class Track {
     const wg = wallRibbon(ext, 0, ext.px.length - 1, hw + 3.9, 0, 1.0, 30);
     this.group.add(new THREE.Mesh(wg, pm));
 
-    // pit building — aligned to the average tangent so it never swings onto the road
+    // pit building — aligned to the average tangent so it never swings onto the road.
+    // On the mountain circuit the pit straight climbs hard, so the building is dropped
+    // to the lowest pit-lane altitude and built tall enough to still read at road level
+    // at the high end — it terraces into the slope instead of floating over the fall.
     const bldLat = laneLat + 8;
-    const bldG = new THREE.BoxGeometry(4, 6.2, ext.px.length * this.length / N * 0.82);
+    let pitMinY = Infinity;
+    for (let k = 0; k < ext.px.length; k++) pitMinY = Math.min(pitMinY, ext.py[k]);
+    const pitMaxY = ext.py.reduce ? Math.max(...ext.py) : pitMinY;  // ext arrays are JS arrays
+    const bldRise = Math.max(0, pitMaxY - pitMinY);
+    const bldG = new THREE.BoxGeometry(4, 6.2 + bldRise, ext.px.length * this.length / N * 0.82);
     const bldM = new THREE.MeshStandardMaterial({ color: 0x28303c, roughness: 0.6, metalness: 0.3 });
     const mid = Math.floor(ext.px.length / 2);
     const bld = new THREE.Mesh(bldG, bldM);
-    bld.position.set(ext.px[mid] + ext.rx[mid] * bldLat, ext.py[mid] + 3.5, ext.pz[mid] + ext.rz[mid] * bldLat);
+    // base at the low end of the pit lane, center-height adjusted for the extra rise
+    bld.position.set(ext.px[mid] + ext.rx[mid] * bldLat, pitMinY + (6.2 + bldRise) / 2 - 0.2, ext.pz[mid] + ext.rz[mid] * bldLat);
     // average tangent across the pit straight for a stable orientation
     let atx = 0, atz = 0;
     for (let k = 0; k < ext.px.length; k++) { atx += ext.tx[k]; atz += ext.tz[k]; }
@@ -480,18 +493,19 @@ export class Track {
         ctx.fillRect(i * w / 8 + 2, 2, w / 8 - 4, h - 4);
       }
     });
+    // garage doors sit at the building's low-end base so they meet the pit lane
     const doors = new THREE.Mesh(new THREE.PlaneGeometry(bldG.depth, 2.6),
       new THREE.MeshStandardMaterial({ map: doorTex, emissive: 0x222a33, emissiveMap: doorTex }));
-    doors.position.set(ext.px[mid] + ext.rx[mid] * (bldLat - 2.05), ext.py[mid] + 1.6, ext.pz[mid] + ext.rz[mid] * (bldLat - 2.05));
+    doors.position.set(ext.px[mid] + ext.rx[mid] * (bldLat - 2.05), pitMinY + 1.35, ext.pz[mid] + ext.rz[mid] * (bldLat - 2.05));
     doors.rotation.y = Math.atan2(ext.rx[mid], ext.rz[mid]) + Math.PI / 2 + Math.PI;
     this.group.add(doors);
     this.lampMaterials.push({ mat: doors.material, day: 0.25, night: 0.9 });
 
-    // timing tower
-    const tt = new THREE.Mesh(new THREE.BoxGeometry(2.4, 22, 2.4),
+    // timing tower — tall enough to reach the ground even on the mountain's climb
+    const tt = new THREE.Mesh(new THREE.BoxGeometry(2.4, 22 + bldRise, 2.4),
       new THREE.MeshStandardMaterial({ color: 0x1c222c, roughness: 0.5, metalness: 0.5 }));
     const t0 = Math.floor(ext.px.length * 0.35);
-    tt.position.set(ext.px[t0] + ext.rx[t0] * (bldLat + 4), ext.py[t0] + 11, ext.pz[t0] + ext.rz[t0] * (bldLat + 4));
+    tt.position.set(ext.px[t0] + ext.rx[t0] * (bldLat + 4), pitMinY + (22 + bldRise) / 2 - 0.2, ext.pz[t0] + ext.rz[t0] * (bldLat + 4));
     tt.castShadow = true;
     this.group.add(tt);
     const screenTex = makeCanvasTexture(64, 256, (ctx, w, h) => {

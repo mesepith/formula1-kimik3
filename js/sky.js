@@ -79,6 +79,9 @@ export class SkyRig {
     scene.add(this.hemi);
     this.amb = new THREE.AmbientLight(0xffffff, 0.22);
     scene.add(this.amb);
+    // night visibility glow — follows the player so the road is readable after dark
+    this.nightGlow = new THREE.PointLight(0xffe4b0, 0, 110, 1.6);
+    scene.add(this.nightGlow);
 
     // clouds
     this.cloudGroup = new THREE.Group();
@@ -94,13 +97,13 @@ export class SkyRig {
         ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
       }
     });
-    const cloudMat = new THREE.MeshBasicMaterial({ map: cloudTex, transparent: true, depthWrite: false, fog: false, opacity: 0.85 });
+    const cloudMat = new THREE.MeshBasicMaterial({ map: cloudTex, transparent: true, depthWrite: false, fog: false, opacity: 0.5 });
     this.clouds = [];
     for (let i = 0; i < 26; i++) {
       const c = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), cloudMat.clone());
       const s = 260 + Math.random() * 480;
       c.scale.set(s, s * 0.42, 1);
-      c.position.set((Math.random() - 0.5) * 4200, 340 + Math.random() * 320, (Math.random() - 0.5) * 4200);
+      c.position.set((Math.random() - 0.5) * 4200, 700 + Math.random() * 520, (Math.random() - 0.5) * 4200);
       c.rotation.x = -Math.PI / 2;
       c.userData.drift = 1.5 + Math.random() * 2.5;
       this.cloudGroup.add(c);
@@ -161,8 +164,9 @@ export class SkyRig {
     this.sun.color.copy(sunCol);
     this.sunDirWorld = this.nightFactor > 0.85
       ? new THREE.Vector3(-0.4, 0.8, -0.3).normalize() : sunDir.clone();
-    this.hemi.intensity = lerp(0.10, 0.95, dayness) * lerp(1, 0.7, grey);
-    this.amb.intensity = lerp(0.05, 0.22, dayness);
+    this.hemi.intensity = lerp(0.55, 0.95, dayness) * lerp(1, 0.7, grey);
+    this.amb.intensity = lerp(0.22, 0.22, dayness) + this.nightFactor * 0.14;
+    this.nightGlow.intensity = this.nightFactor > 0.5 ? (this.nightFactor - 0.5) * 2 * 2.4 : 0;
     this.hemi.color.copy(hor);
     this.hemi.groundColor.copy(gnd);
 
@@ -173,11 +177,11 @@ export class SkyRig {
     this.cloudGroup.children.forEach((c, i) => {
       c.visible = i / 26 < weather.cloudCover * 1.15 + 0.08;
       c.material.color.copy(cTint);
-      c.material.opacity = 0.5 + weather.cloudCover * 0.45;
+      c.material.opacity = 0.28 + weather.cloudCover * 0.3;
     });
 
-    // fog
-    this.fogColor = hor.clone().lerp(new THREE.Color(hazeColor ?? 0x9aa4ae), 0.4);
+    // fog — keep close to the horizon color so distant track doesn't disappear into a dusty veil
+    this.fogColor = hor.clone().lerp(new THREE.Color(hazeColor ?? 0x9aa4ae), 0.12);
     if (this.nightFactor > 0.8) this.fogColor.multiplyScalar(0.14);
 
     // environment map (reflections)
@@ -214,6 +218,7 @@ export class SkyRig {
       this.sun.target.position.copy(focus);
       this.mesh.position.set(focus.x, 0, focus.z);
       this.cloudGroup.position.set(focus.x, 0, focus.z);
+      this.nightGlow.position.set(focus.x, focus.y + 9, focus.z);
     }
     for (const c of this.clouds) {
       c.position.x += c.userData.drift * dt;

@@ -12,6 +12,7 @@ import { HUD } from './hud.js';
 import { UI } from './ui.js';
 import { Input } from './input.js';
 import { AudioEngine } from './audio.js';
+import { RoadDebugger } from './road-debug.js';
 
 const $ = id => document.getElementById(id);
 
@@ -42,6 +43,8 @@ class Game {
     this.hud = new HUD();
     this.input = new Input();
     this.audio = new AudioEngine();
+    this.dbg = new RoadDebugger();
+    this.dbg.attach(this);
 
     this.track = null; this.env = null; this.race = null;
     this.state = 'menu';   // menu | loading | intro | racing | finished
@@ -83,6 +86,12 @@ class Game {
           $('pause-main-box').classList.remove('hidden');
         } else {
           this.togglePause();
+        }
+      }
+      if (e.code === 'F4') {
+        e.preventDefault();
+        if (this.state === 'racing' || this.state === 'finished' || this.state === 'intro' || this.state === 'lights') {
+          this.dbg.toggle();
         }
       }
       if (e.code === 'Enter' && this.state === 'intro') {
@@ -166,7 +175,7 @@ class Game {
     this.sky.set(timeDef, weatherDef, city.env.haze);
     this.scene.fog.color.copy(this.sky.fogColor);
     this.scene.fog.density = weatherDef.fog;
-    this.renderer.toneMappingExposure = timeDef.exposure;
+    this.renderer.toneMappingExposure = this.sky.exposure;
     this.weatherSys.set(weatherDef, this.track);
     this.track.setNight(this.sky.nightFactor);
     this.track.setWet(weatherDef.rain > 0 ? 1 : 0);
@@ -182,6 +191,7 @@ class Game {
       upgrades: this.champ ? this.champ.upgrades : null,
       championship: this.champ ? { round: this.champ.round, standings: this.champ.standings } : null,
     });
+    this.race.setNight(this.sky.nightFactor);
     this.camRig.buildTVPoints(this.track);
     this.camRig.mode = 'chase';
     this.hud.setupRace(this.race, weatherDef, sel.laps);
@@ -191,6 +201,7 @@ class Game {
     $('loading').classList.add('hidden');
 
     this._loading = false;
+    this.dbg.setEnabled(true);
     // intro cinematic
     this.state = 'intro';
     this.hud.show();
@@ -263,6 +274,7 @@ class Game {
 
   _teardownRace() {
     if (this._resultsTimer) { clearTimeout(this._resultsTimer); this._resultsTimer = null; }
+    this.dbg.setEnabled(false);
     this.hud.hide();
     document.body.classList.remove('cine-on');
     if (this.race) { this.race.dispose(); this.race = null; }

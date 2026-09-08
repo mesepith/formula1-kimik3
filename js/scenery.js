@@ -32,8 +32,7 @@ function facadeTexture(style, baseColor) {
   });
 }
 
-function groundTexture(kind, baseColor) {
-  return makeCanvasTexture(512, 512, (ctx, w, h) => {
+function groundTexture(kind, baseColor) {return makeCanvasTexture(512, 512, (ctx, w, h) => {
     const c = new THREE.Color(baseColor);
     ctx.fillStyle = `rgb(${c.r * 255 | 0},${c.g * 255 | 0},${c.b * 255 | 0})`;
     ctx.fillRect(0, 0, w, h);
@@ -62,6 +61,13 @@ function brightenGround(baseColor) {
   c.getHSL(hsl);
   c.setHSL(hsl.h, Math.min(hsl.s, 0.55), clamp(hsl.l * 1.6 + 0.08, 0.28, 0.6));
   return c.getHex();
+}
+
+// rocky noise retained for future terrain use
+function mulberryWave(x, z) {
+  const v = Math.sin(x * 0.021 + 1.3) * Math.cos(z * 0.019 - 0.7)
+          + Math.sin(x * 0.047 - 0.5) * Math.cos(z * 0.043 + 1.1) * 0.5;
+  return v * 0.5 + 0.5;
 }
 
 function palmFrondTexture() {
@@ -120,33 +126,80 @@ export function buildEnvironment(scene, track, city, opts = {}) {
   gtex.repeat.set(sizeX / 90, sizeZ / 90);
   const gmat = new THREE.MeshStandardMaterial({ map: gtex, roughness: 0.96, metalness: 0 });
   let flatGround = null;
+  // terrainHeight(x,z): exposed for the mountain circuit so props & buildings can be
+  // anchored to the sculpted terrain (Ladakh). Flat cities keep y=0.
+  let terrainHeight = null;
   if (env.monument === 'mountains') {
-    // Himalayan terrain heightfield
-    const seg = 110;
+    // Lap profile: this circuit spirals UP a mountain. The road folds back over
+    // itself, so any (x,z) column can have SEVERAL road altitudes stacked above it.
+    // The terrain for that column must hug the LOWEST of those altitudes (the one the
+    // player actually drives along the valley floor), or it will bulge up between the
+    // levels and hang over the lower road like a floating roof.
+    //
+    // Precompute, for every sample, the lowest road altitude reachable within the
+    // fold corridor (foldR). Then terrain targets that floor minus a small shoulder,
+    // filling the chasm right up to the road edge so the ribbon never floats, while
+    // never poking THROUGH a higher level (min() keeps it under whichever level is
+    // physically lowest at that column).
+    const foldR = 165;
+    const yLow = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      let lo = s.py[i];
+      for (let j = 0; j < N; j += 2) {
+        const dx = s.px[i] - s.px[j], dz = s.pz[i] - s.pz[j];
+        if (dx * dx + dz * dz < foldR * foldR && s.py[j] < lo) lo = s.py[j];
+      }
+      yLow[i] = lo;
+    }
+    // smooth the floor so the terrain doesn't staircase along the ribbon
+    const yLowSm = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      let sum = 0;
+      for (let k = -6; k <= 6; k++) sum += yLow[(i + k + N) % N];
+      yLowSm[i] = sum / 13;
+    }
+
+    // nearest-distance + floor query (coarse; matches the vertex pass below)
+    const queryFloor = (x, z) => {
+      let dMin = 1e9, yF = 0;
+      for (let i = 0; i < N; i += 3) {
+        const dx = x - s.px[i], dz = z - s.pz[i];
+        const d = dx * dx + dz * dz;
+        if (d < dMin) { dMin = d; yF = yLowSm[i]; }
+      }
+      return { d: Math.sqrt(dMin), yFloor: yF };
+    };
+
+    const shoulder = 2.1;   // terrain sits this far below the driving surface
+    const blendR = 130;     // horizontal distance over which terrain falls from road to far peaks
+    terrainHeight = (x, z) => {
+      const { d, yFloor } = queryFloor(x, z);
+      const ridge = Math.abs(Math.sin(x * 0.008) * Math.cos(z * 0.011)) + Math.abs(Math.sin(x * 0.021 + z * 0.017));
+      const rise = clamp((d - 48) / blendR, 0, 1);
+      let h = yFloor - shoulder + rise * rise * (48 + ridge * 80);
+      // far background must read as high peaks, not a black hole
+      h = Math.max(h, minY - 30);
+      return h;
+    };
+
+    const seg = 120;
     const tg = new THREE.PlaneGeometry(sizeX, sizeZ, seg, seg);
     tg.rotateX(-Math.PI / 2);
     const posA = tg.attributes.position;
     const colors = new Float32Array(posA.count * 3);
-    const cRock = new THREE.Color(0x8a7a62), cSnow = new THREE.Color(0xf2f6fa), cDirt = new THREE.Color(0x6a5a48);
+    const cRock = new THREE.Color(0x5c554c), cSnow = new THREE.Color(0xf4f8fc), cDirt = new THREE.Color(0x4a4038);
     for (let vi = 0; vi < posA.count; vi++) {
       const x = posA.getX(vi) + cx, z = posA.getZ(vi) + cz;
-      let dMin = 1e9, yNear = 0;
-      for (let i = 0; i < N; i += 5) {
-        const dx = x - s.px[i], dz = z - s.pz[i];
-        const d = dx * dx + dz * dz;
-        if (d < dMin) { dMin = d; yNear = s.py[i]; }
-      }
-      dMin = Math.sqrt(dMin);
-      let h;
-      if (dMin < 14) h = yNear - 0.4;
-      else if (dMin < 90) h = yNear - 0.4 + (dMin - 14) * (0.28 + 0.18 * Math.sin(x * 0.05) * Math.cos(z * 0.045));
-      else {
-        const ridge = Math.abs(Math.sin(x * 0.008) * Math.cos(z * 0.011)) + Math.abs(Math.sin(x * 0.021 + z * 0.017));
-        h = yNear + 40 + (dMin - 90) * 0.35 + ridge * 70;
-      }
-      posA.setY(vi, h - 0);
-      const snow = clamp((h - (maxY + 55)) / 60, 0, 1);
-      const cc = snow > 0.15 ? cSnow.clone().lerp(cRock, 1 - snow) : (dMin < 30 ? cDirt : cRock);
+      const { d: dRoad, yFloor } = queryFloor(x, z);
+      const h = terrainHeight(x, z);
+      posA.setY(vi, h);
+      // Snow only on genuine high ground that is FAR from the circuit. Near the road
+      // the surface is the shoulder/cut, which must read as rock & dirt — otherwise a
+      // smooth pale mound reads as sky and makes grounded buildings look airborne.
+      let snow = clamp((h - (maxY - 6)) / 42, 0, 1);
+      const dFade = clamp((dRoad - 130) / 90, 0, 1); // fade snow in with distance
+      snow *= dFade * dFade * (3 - 2 * dFade);
+      const cc = snow > 0.08 ? cSnow.clone().lerp(cRock, 1 - snow) : cDirt;
       colors[vi * 3] = cc.r; colors[vi * 3 + 1] = cc.g; colors[vi * 3 + 2] = cc.b;
     }
     tg.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -296,6 +349,17 @@ export function buildEnvironment(scene, track, city, opts = {}) {
     return Math.sqrt(dMin);
   };
   const minClear = hw + 26; // keep city blocks well outside the barriers
+  const isMountain = env.monument === 'mountains';
+  // lowest road altitude near a point (any axis) — used to anchor Ladakh buildings to
+  // the valley floor so they never hover over the terrain dug under a folded-over section
+  const lowestRoadNear = (x, z) => {
+    let lo = Infinity;
+    for (let j = 0; j < N; j += 2) {
+      const dx = x - s.px[j], dz = z - s.pz[j];
+      if (dx * dx + dz * dz < 200 * 200 && s.py[j] < lo) lo = s.py[j];
+    }
+    return lo;
+  };
 
   for (let i = 0; i < N; i += 3) {
     if (rng() > env.buildings.density) continue;
@@ -307,6 +371,15 @@ export function buildEnvironment(scene, track, city, opts = {}) {
         const d = new THREE.Vector2(bx - cx, bz - cz).normalize();
         if (d.dot(waterDir) > 0.45) continue; // keep waterfront open
       }
+      // Ladakh: a building spawned next to a HIGH section that has a LOWER section
+      // folding under it would hover above the valley floor. Only allow buildings on
+      // terrain that is near the local road (i.e. beside the lowest stacked level) —
+      // and even then only on the gentle valley floor, never on a stepped shelf.
+      if (isMountain && terrainHeight) {
+        const low = lowestRoadNear(bx, bz);
+        if (low !== Infinity && s.py[i] > low + 7) continue; // high shelf above a lower road
+        if (s.py[i] > minY + 26) continue; // keep the high climbs clear of clutter
+      }
       const w = 10 + rng() * 22, d = 10 + rng() * 22;
       const footprint = Math.hypot(w, d) / 2;
       if (clearance(bx, bz) < minClear + footprint) continue; // would touch the circuit
@@ -317,7 +390,29 @@ export function buildEnvironment(scene, track, city, opts = {}) {
       if (style === 'colonial' || style === 'pink' || style === 'goa' || style === 'kochi') hgt = 6 + rng() * env.buildings.maxH;
       if (style === 'ladakh') hgt = 4 + rng() * 8;
       const color = palettes[Math.floor(rng() * palettes.length)];
-      instances.push({ x: bx, z: bz, y: (env.monument === 'mountains') ? null : 0, w, d, h: hgt, yaw: rng() * Math.PI, color });
+      // Ladakh: sit the base on the actual terrain instead of the road altitude, so
+      // buildings on the lower slopes never float and never get buried by the road.
+      let baseY = 0;
+      if (isMountain && terrainHeight) {
+        // Ground the building on the LOWEST terrain anywhere under its footprint —
+        // the corner check matters here: on a stepped fold-slope the downhill corner
+        // can hang meters below the centre point, which is what made single boxes
+        // hover. Sample the 4 corners + centre and take the minimum.
+        const hwf = w / 2, hdf = d / 2;
+        let ty = Infinity;
+        // conservative: sample a small disc of points covering the rotated footprint
+        for (let ox = -1; ox <= 1; ox++) for (let oz = -1; oz <= 1; oz++) {
+          const px = bx + ox * hwf, pz = bz + oz * hdf;
+          ty = Math.min(ty, terrainHeight(px, pz));
+        }
+        // If the fold put the bowl floor far below this road section, drop the box —
+        // it would float over the gap no matter where we ground it.
+        if (s.py[i] - ty > 9) continue;
+        // settle the box 1.5m into its footing so the whole lower edge is grounded
+        // even on the coarse terrain mesh (no daylight under the downhill corner).
+        baseY = Math.min(ty, s.py[i] - 1.0) - 1.5;
+      }
+      instances.push({ x: bx, z: bz, y: baseY, w, d, h: hgt, yaw: rng() * Math.PI, color });
     }
   }
   // bucket by color palette index → instanced meshes
@@ -339,7 +434,7 @@ export function buildEnvironment(scene, track, city, opts = {}) {
     const im = new THREE.InstancedMesh(boxG, mat, list.length);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pv = new THREE.Vector3();
     list.forEach((inst, k) => {
-      const y = inst.y === null ? 0 : inst.y;
+      const y = (inst.y === null || inst.y === undefined) ? 0 : inst.y;
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), inst.yaw);
       sc.set(inst.w, inst.h, inst.d);
       pv.set(inst.x, y - 0.1, inst.z);
@@ -387,7 +482,8 @@ export function buildEnvironment(scene, track, city, opts = {}) {
       const scale = 0.8 + rng() * (env.trees === 'coconut' ? 0.9 : 0.5);
       if (clearance(x, z) < hw + 5.0 + scale * 3.6) continue; // keep fronds off the track
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * 6.3);
-      pv.set(x, s.py[i] - 0.05, z);
+      const treeY = (env.monument === 'mountains' && terrainHeight) ? terrainHeight(x, z) : s.py[i] - 0.05;
+      pv.set(x, treeY, z);
       sc.set(scale, scale * (env.trees === 'coconut' ? 1.35 : 1), scale);
       m4.compose(pv, q, sc);
       trunks.setMatrixAt(placed, m4);
@@ -400,7 +496,7 @@ export function buildEnvironment(scene, track, city, opts = {}) {
   }
 
   // ---------- monuments ----------
-  buildMonument(group, track, city, rng, nightMats, animated, { cx, cz, minY, maxY });
+  buildMonument(group, track, city, rng, nightMats, animated, { cx, cz, minY, maxY, terrainHeight });
 
   // ---------- street traffic (outside barriers) ----------
   buildTraffic(group, track, city, rng, animated);
@@ -667,7 +763,18 @@ function buildMonument(group, track, city, rng, nightMats, animated, bbox) {
       stupa.position.set(-10 + k * 5, 25, 0);
       m.add(stupa);
     }
-    m.position.set(p.x, p.y + 26, p.z);
+    // The monastery sits on a spur at road level (its intended shelf). Because the
+    // lap folds over itself here, the terrain directly below is dug down to the lower
+    // level — so we run a stone foundation pier from the building's base all the way
+    // down to that valley floor. Result: a terraced cliff-face monastery, never a
+    // floating box.
+    const floorY = bbox.terrainHeight ? bbox.terrainHeight(p.x, p.z) : 0;
+    const baseY = Math.max(floorY, p.y + 2);   // perch just above the local road shelf
+    m.position.set(p.x, baseY, p.z);
+    const drop = (baseY - floorY) + 6;
+    const pier = new THREE.Mesh(new THREE.BoxGeometry(26, drop, 18),
+      new THREE.MeshStandardMaterial({ color: 0x6a6156, roughness: 1 }));
+    pier.position.y = 2 - drop / 2; m.add(pier);
   }
 
   group.add(m);

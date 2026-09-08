@@ -9,6 +9,7 @@ import { TEAMS, GAME } from './config.js';
 export class Race {
   constructor({ scene, track, weather, audio, mode, laps, playerTeamId, playerCarIndex, aiCount, upgrades, championship }) {
     this.scene = scene; this.track = track; this.weather = weather; this.audio = audio;
+    this.nightFactor = 0;
     this.mode = mode;              // 'quick' | 'championship' | 'career' | 'timetrial'
     this.laps = mode === 'timetrial' ? 999 : laps;
     this.state = 'grid';           // grid → lights → racing → finished
@@ -78,6 +79,8 @@ export class Race {
         gapAhead: null, drsWasOpen: false,
       };
       car.ai && (car.ai.car = car);
+      // headlight emissive default off; setNight() decides
+      car.mesh.headlightMat.emissiveIntensity = 0;
       state.trackIdx = Math.floor(((1 - (46 + gridPos * 8.2) / track.length) % 1) * track.N);
       state.tPrev = state.trackIdx / track.N;
       this.cars.push(car);
@@ -89,6 +92,15 @@ export class Race {
     this.playerParams.dfK = CAR_PARAMS.dfK * (1 + this.upgrades.aero * 0.045);
     this.playerParams.muBase = CAR_PARAMS.muBase * (1 + this.upgrades.tires * 0.02);
     this._sortPositions(true);
+  }
+
+  setNight(nf) {
+    this.nightFactor = nf;
+    const on = nf > 0.4;
+    for (const c of this.cars) {
+      if (c.mesh.beam) c.mesh.beam.intensity = on ? 90 : 0;
+      if (c.mesh.headlightMat) c.mesh.headlightMat.emissiveIntensity = on ? 2.6 : 0;
+    }
   }
 
   emit(type, data = {}) { this.events.push({ type, ...data }); }
@@ -302,6 +314,7 @@ export class Race {
     const bob = st.onKerb ? Math.sin(this.clock * 40 + car.id) * 0.02 : 0;
     g.position.y = st.pos.y + bob;
     g.rotation.set(st.pitchVisual, st.yaw, st.rollVisual, 'YXZ');
+    // headlights: emissive/beam set once by setNight(); nothing per-frame
     // wheels
     for (const key of ['fl', 'fr', 'rl', 'rr']) {
       const w = car.mesh.wheels[key];

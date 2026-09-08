@@ -200,13 +200,12 @@ export const CITIES = [
       [-60, 220, 90], [60, 260, 82], [160, 190, 72], [200, 60, 62],
       [160, -60, 50], [80, -80, 40],
     ],
-    env: { ground: 0x9a8a72, groundKind: 'mountain', water: null,
+    env: { ground: 0x7d7666, groundKind: 'mountain', water: null,
       buildings: { style: 'ladakh', density: 0.12, palette: [0xd8d0c0, 0xc0b8a0, 0xa89880], maxH: 12 },
-      trees: 'none', treeDensity: 0.05, monument: 'mountains', haze: 0xb8c8d8 },
-    weatherDefault: 'cloudy', timeDefault: 'morning', weatherAlt: 'fog',
+      trees: 'none', treeDensity: 0.05, monument: 'mountains', haze: 0xa9c1d7 },
+    weatherDefault: 'highcloud', timeDefault: 'morning', weatherAlt: 'fog',
   },
 ];
-
 export const TEAMS = [
   { id: 'tiranga', name: 'TIRANGA RACING', short: 'TRI', primary: 0xff9933, secondary: 0x138808, accent: 0xffffff,
     desc: 'The pride of the nation — tricolor livery', drivers: ['A. VERMA', 'K. CHAUHAN'], numbers: [1, 2], skill: 0.99 },
@@ -228,6 +227,7 @@ export const TEAMS = [
 
 export const WEATHERS = [
   { id: 'sunny', name: 'Sunny', icon: '☀', grip: 1.0, rain: 0, fog: 0.00035, sunMul: 1.0, cloudCover: 0.15 },
+  { id: 'highcloud', name: 'High Cloud', icon: '⛅', grip: 1.0, rain: 0, fog: 0.00038, sunMul: 0.92, cloudCover: 0.35 },
   { id: 'cloudy', name: 'Cloudy', icon: '☁', grip: 0.98, rain: 0, fog: 0.0006, sunMul: 0.62, cloudCover: 0.8 },
   { id: 'rain', name: 'Rain', icon: '🌧', grip: 0.78, rain: 0.55, fog: 0.0012, sunMul: 0.4, cloudCover: 1.0 },
   { id: 'monsoon', name: 'Monsoon', icon: '⛈', grip: 0.66, rain: 1.0, fog: 0.0019, sunMul: 0.3, cloudCover: 1.0, lightning: true },
