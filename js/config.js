@@ -192,13 +192,18 @@ export const CITIES = [
     desc: 'Hairpins, tunnels and cliffs at 3,500m — the most extreme circuit on Earth.',
     lengthKm: 4.8, width: 11, seed: 1111,
     points: [
+      // NOTE: point order is rotated vs older versions — start/finish now sits on
+      // the fast ridge descent (old P8/P9 area). This fixes the reported pinch
+      // 'ROAD DEBUG ladakh | 5m/3831m ... R≈9.9m v=60kmh' caused by the 170°
+      // wrap corner sitting exactly at the gantry; that hairpin is now a proper
+      // mid-lap turn at 2,460m with a braking zone in front of it.
+      [-420, -240, 70], [-320, -180, 74], [-220, -240, 78], [-180, -380, 84],
+      [-230, -520, 90], [-360, -580, 96], [-490, -540, 100], [-560, -410, 104],
+      [-540, -260, 108], [-440, -150, 110], [-300, -120, 108], [-200, -30, 104],
+      [-150, 110, 98], [-60, 220, 90], [60, 260, 82], [160, 190, 72],
+      [200, 60, 62], [160, -60, 50], [80, -80, 40],
       [0, 0, 20], [40, -180, 24], [30, -360, 30], [-60, -520, 38], [-180, -600, 46],
-      [-320, -590, 52], [-420, -500, 58], [-460, -370, 64], [-420, -240, 70],
-      [-320, -180, 74], [-220, -240, 78], [-180, -380, 84], [-230, -520, 90],
-      [-360, -580, 96], [-490, -540, 100], [-560, -410, 104], [-540, -260, 108],
-      [-440, -150, 110], [-300, -120, 108], [-200, -30, 104], [-150, 110, 98],
-      [-60, 220, 90], [60, 260, 82], [160, 190, 72], [200, 60, 62],
-      [160, -60, 50], [80, -80, 40],
+      [-320, -590, 52], [-420, -500, 58], [-460, -370, 64],
     ],
     env: { ground: 0x7d7666, groundKind: 'mountain', water: null,
       buildings: { style: 'ladakh', density: 0.12, palette: [0xd8d0c0, 0xc0b8a0, 0xa89880], maxH: 12 },
