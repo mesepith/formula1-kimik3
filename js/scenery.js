@@ -209,27 +209,61 @@ export function buildEnvironment(scene, track, city, opts = {}) {
     terrain.position.set(cx, 0, cz);
     terrain.receiveShadow = true;
     group.add(terrain);
-    // tunnel over a high section
-    const ti = Math.floor(0.55 * N);
-    const tPos = track.pointAt(0.55), tRight = track.rightAt(0.55), tTan = track.tangentAt(0.55);
-    const tunnel = new THREE.Group();
-    const tMat = new THREE.MeshStandardMaterial({ color: 0x5a5248, roughness: 0.95, side: THREE.DoubleSide });
-    const tube = new THREE.Mesh(new THREE.CylinderGeometry(hw + 4.5, hw + 4.5, 90, 18, 1, true, 0, Math.PI), tMat);
-    tube.rotation.z = Math.PI / 2; tube.rotation.y = Math.PI / 2;
-    tube.position.y = 0;
-    tunnel.add(tube);
-    // interior light strip
-    const stripTex = makeCanvasTexture(16, 128, (ctx, w, h) => {
-      for (let i = 0; i < 8; i++) { ctx.fillStyle = '#ffe9a8'; ctx.fillRect(4, i * 16 + 4, 8, 6); }
-    });
-    const strip = new THREE.Mesh(new THREE.PlaneGeometry(86, 1.2),
-      new THREE.MeshStandardMaterial({ map: stripTex, emissive: 0xffffff, emissiveMap: stripTex, emissiveIntensity: 0.8, side: THREE.DoubleSide }));
-    strip.rotation.x = Math.PI / 2; strip.position.y = hw + 3.4;
-    tunnel.add(strip);
-    nightMats.push({ mat: strip.material, day: 0.8, night: 1.6 });
-    tunnel.position.copy(tPos);
-    tunnel.rotation.y = Math.atan2(tTan.x, tTan.z) + Math.PI / 2;
-    group.add(tunnel);
+    // Tunnel over a high section. Built as a spline-following arch (not one rigid
+    // cylinder) so on Ladakh's steep descent (≈-0.08 m/m) the roof tracks the
+    // falling road and the lip never dips into the driving corridor and reads as
+    // a solid wall across it (the "black wall you can drive through" at t≈0.55).
+    {
+      const tC = 0.55, halfLen = 40, RAD = hw + 4.5;
+      const ds = track.length / N;      // metres per sample
+      const nS = Math.max(6, Math.round((halfLen * 2) / ds));
+      const t0 = tC - halfLen / track.length;
+      const pos = [], uvm = [], idx = [];
+      const SEG = 18, ARCH = Math.PI;   // half-pipe
+      for (let k = 0; k <= nS; k++) {
+        const tt = t0 + (k / nS) * (halfLen * 2 / track.length);
+        const pk = track.pointAt(tt), rk = track.rightAt(tt);
+        for (let a = 0; a <= SEG; a++) {
+          const ang = (a / SEG) * ARCH;                 // 0..pi across the roof
+          const latOff = Math.cos(ang) * RAD;           // +right ... -right
+          const hOff = Math.sin(ang) * RAD + 0.55;      // crown height above road
+          pos.push(pk.x + rk.x * latOff, pk.y + hOff, pk.z + rk.z * latOff);
+          uvm.push(k / 3, a / SEG);
+        }
+      }
+      for (let k = 0; k < nS; k++) for (let a = 0; a < SEG; a++) {
+        const r0 = k * (SEG + 1) + a, r1 = r0 + SEG + 1;
+        idx.push(r0, r1, r0 + 1, r0 + 1, r1, r1 + 1);
+      }
+      const tg2 = new THREE.BufferGeometry();
+      tg2.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      tg2.setAttribute('uv', new THREE.Float32BufferAttribute(uvm, 2));
+      tg2.setIndex(idx); tg2.computeVertexNormals();
+      const tMat = new THREE.MeshStandardMaterial({ color: 0x5a5248, roughness: 0.95, side: THREE.DoubleSide });
+      const tube = new THREE.Mesh(tg2, tMat);
+      group.add(tube);
+      // interior light strip follows the same arc
+      const stripTex = makeCanvasTexture(16, 128, (ctx, w, h) => {
+        for (let i = 0; i < 8; i++) { ctx.fillStyle = '#ffe9a8'; ctx.fillRect(4, i * 16 + 4, 8, 6); }
+      });
+      const sp = [], sidx = [], suv = [];
+      for (let k = 0; k <= nS; k++) {
+        const tt = t0 + (k / nS) * (halfLen * 2 / track.length);
+        const pk = track.pointAt(tt);
+        sp.push(pk.x, pk.y + RAD * 0.62 + 0.55, pk.z);
+        sp.push(pk.x, pk.y + RAD * 0.62 + 1.75, pk.z);
+        suv.push(k / 8, 0, k / 8, 1);
+        if (k < nS) { const a = k * 2; sidx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      }
+      const stripG = new THREE.BufferGeometry();
+      stripG.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+      stripG.setAttribute('uv', new THREE.Float32BufferAttribute(suv, 2));
+      stripG.setIndex(sidx);
+      const strip = new THREE.Mesh(stripG,
+        new THREE.MeshStandardMaterial({ map: stripTex, emissive: 0xffffff, emissiveMap: stripTex, emissiveIntensity: 0.8, side: THREE.DoubleSide }));
+      group.add(strip);
+      nightMats.push({ mat: strip.material, day: 0.8, night: 1.6 });
+    }
   } else {
     flatGround = new THREE.Mesh(new THREE.PlaneGeometry(sizeX, sizeZ), gmat);
     flatGround.rotation.x = -Math.PI / 2;

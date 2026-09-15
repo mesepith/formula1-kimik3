@@ -226,12 +226,86 @@ export class Track {
     for (let i = 0; i < N; i++) { minPY = Math.min(minPY, s.py[i]); maxPY = Math.max(maxPY, s.py[i]); }
     const skirtDepth = (maxPY - minPY) > 4 ? Math.min((maxPY - minPY) * 0.5 + 3, 46) : 1.2;
     const skirtMat = new THREE.MeshStandardMaterial({ map: concreteTexture(), roughness: 0.95, color: 0x6a6f75 });
-    for (const side of [-1, 1]) {
-      const sg = wallRibbon(s, 0, N - 1, side * hw, -skirtDepth, 0.02, 30);
-      const sm2 = new THREE.Mesh(sg, skirtMat);
-      sm2.receiveShadow = true;
-      this.group.add(sm2);
-      this.group.add(this._wrapWall(side * hw, -skirtDepth, 0.02, skirtMat));
+
+    // On the mountain circuit the lap folds back over itself: a sample's skirt can
+    // belong to an UPPER level while its bottom hangs right next to (or across) a
+    // LOWER road portion. The old rule (deep by default, zero if a >6m-lower
+    // sample sits within 45m) missed the case where the SAME level bends back on
+    // itself only ~75m away — the curtain then crossed the corridor it was
+    // supposed to hide behind ("black wall across the road", Ladakh s700-830).
+    //
+    // New rule: depth per side = how clear the space below the edge actually is.
+    // We find the nearest road sample in XZ to the edge point; if that sample is
+    // a different level and far below, the edge is a genuine cliff → full depth.
+    // If the nearest sample is on the SAME descending ribbon (dy small) the road
+    // is folding back here → keep only a shallow reveal so the skirt can never
+    // become a wall in the corridor. A wide along-track exclusion stops the
+    // descender dropping deep right where it bends back toward itself.
+    const skirtDropL = new Float32Array(N).fill(skirtDepth);
+    const skirtDropR = new Float32Array(N).fill(skirtDepth);
+    if (skirtDepth > 2.5) {
+      const SHALLOW = 1.2;            // kerb-reveal depth used on flat circuits
+      const sameLevelBand = 7;        // |dy| below this ⇒ same ribbon, fold risk
+      const selfFoldWindow = 90;      // samples along-track that count as "same bend"
+      for (let i = 0; i < N; i++) {
+        for (const side of [-1, 1]) {
+          const ex = s.px[i] + s.rx[i] * side * (hw + 1.5);
+          const ez = s.pz[i] + s.rz[i] * side * (hw + 1.5);
+          let nearestD = Infinity, nearestDY = Infinity, nearestDI = Infinity;
+          for (let j = 0; j < N; j++) {
+            const dx = ex - s.px[j], dz = ez - s.pz[j];
+            const d2 = dx * dx + dz * dz;
+            if (d2 < nearestD * nearestD) {
+              nearestD = Math.sqrt(d2);
+              nearestDY = s.py[j] - s.py[i];
+              let di = i - j; if (di < 0) di += N;
+              nearestDI = Math.min(di, N - di);
+            }
+          }
+          // True cliff: the closest road in plan-view is far below AND far enough
+          // along the lap that it is a different section, not this same bend.
+          const trueCliff = nearestDY < -sameLevelBand && nearestDI >= selfFoldWindow;
+          (side < 0 ? skirtDropL : skirtDropR)[i] = trueCliff ? skirtDepth : SHALLOW;
+        }
+      }
+      // smooth ONCE with a min-bias so a deep edge feathers out before a fold,
+      // never abruptly — avoids a visible vertical seam where depth changes.
+      const smL = new Float32Array(N), smR = new Float32Array(N);
+      for (let i = 0; i < N; i++) {
+        let a = skirtDropL[i], b = skirtDropR[i];
+        for (let k = -selfFoldWindow; k <= selfFoldWindow; k++) {
+          a = Math.min(a, skirtDropL[(i + k + N) % N]);
+          b = Math.min(b, skirtDropR[(i + k + N) % N]);
+        }
+        smL[i] = a; smR[i] = b;
+      }
+      skirtDropL.set(smL); skirtDropR.set(smR);
+    }
+
+    const skirtRibbon = (side, drops) => {
+      const lat = side * hw;
+      const pos = new Float32Array(N * 2 * 3), uv = new Float32Array(N * 2 * 2);
+      const idx = [];
+      for (let k = 0; k < N; k++) {
+        const px = s.px[k] + s.rx[k] * lat, pz = s.pz[k] + s.rz[k] * lat, py = s.py[k];
+        pos[k * 6 + 0] = px; pos[k * 6 + 1] = py - drops[k]; pos[k * 6 + 2] = pz;
+        pos[k * 6 + 3] = px; pos[k * 6 + 4] = py + 0.02;      pos[k * 6 + 5] = pz;
+        uv[k * 4 + 0] = s.dist[k] / 30; uv[k * 4 + 1] = 0;
+        uv[k * 4 + 2] = s.dist[k] / 30; uv[k * 4 + 3] = 1;
+        if (k < N - 1) { const a = k * 2, b = k * 2 + 1, c = k * 2 + 2, e = k * 2 + 3; idx.push(a, c, b, b, c, e); }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      g.setIndex(idx);
+      g.computeVertexNormals();
+      return g;
+    };
+    for (const [side, drops] of [[-1, skirtDropL], [1, skirtDropR]]) {
+      const m2 = new THREE.Mesh(skirtRibbon(side, drops), skirtMat);
+      m2.receiveShadow = true;
+      this.group.add(m2);
+      this.group.add(this._wrapWall(side * hw, -drops[N - 1], 0.02, skirtMat));
     }
 
     // white edge lines — fully emissive so they read identical in sun or shadow,
